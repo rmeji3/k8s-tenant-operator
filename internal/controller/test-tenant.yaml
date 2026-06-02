@@ -1,0 +1,8 @@
+apiVersion: tenant.rafaelmejia.me/v1
+kind: Tenant
+metadata:
+  name: test
+spec:
+  subdomain: test
+  appImage: nginx:latest
+  replicas: 5
