@@ -270,15 +270,33 @@ var _ = Describe("Manager", Ordered, func() {
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 
-		// TODO: Customize the e2e test suite with scenarios specific to your project.
-		// Consider applying sample/CR(s) and check their status and/or verifying
-		// the reconciliation by using the metrics, i.e.:
-		// metricsOutput, err := getMetricsOutput()
-		// Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")
-		// Expect(metricsOutput).To(ContainSubstring(
-		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
-		//    strings.ToLower(<Kind>),
-		// ))
+		It("should provision resources when a Tenant is created", func() {
+			By("applying a Tenant sample")
+			cmd := exec.Command("kubectl", "apply", "-f", "config/samples/tenant_v1_tenant.yaml")
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to apply Tenant sample")
+
+			By("verifying the tenant namespace is created")
+			Eventually(func(g Gomega) {
+				// YOU: run `kubectl get namespace sample` and expect no error
+				cmd := exec.Command("kubectl", "get", "namespace", "sample")
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Failed to get tenant namespace")
+			}).Should(Succeed())
+
+			By("verifying the Deployment is created in the tenant namespace")
+			Eventually(func(g Gomega) {
+				// YOU: run `kubectl get deployment sample-deployment -n sample` and expect no error
+				cmd := exec.Command("kubectl", "get", "deployment", "sample-deployment", "-n", "sample")
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Failed to get tenant deployment")
+			}).Should(Succeed())
+
+			By("cleaning up the Tenant")
+			cmd = exec.Command("kubectl", "delete", "-f", "config/samples/tenant_v1_tenant.yaml")
+			_, _ = utils.Run(cmd)
+		})
+
 	})
 })
 

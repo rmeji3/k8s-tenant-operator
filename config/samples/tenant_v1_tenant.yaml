@@ -4,6 +4,8 @@ metadata:
   labels:
     app.kubernetes.io/name: k8s-tenant-operator
     app.kubernetes.io/managed-by: kustomize
-  name: tenant-sample
+  name: sample
 spec:
-  # TODO(user): Add fields here
+  appImage: nginx:latest
+  replicas: 3
+  subdomain: sample
