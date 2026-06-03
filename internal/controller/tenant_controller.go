@@ -32,9 +32,9 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	builder "sigs.k8s.io/controller-runtime/pkg/builder"
-	predicate "sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	predicate "sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 // TenantReconciler reconciles a Tenant object
@@ -163,10 +163,10 @@ func (r *TenantReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// our children live in a different namespace than the Tenant, so
 		// owner references aren't allowed.
 		Watches(
-			&corev1.Namespace{}, 
+			&corev1.Namespace{},
 			handler.EnqueueRequestsFromMapFunc(r.mapToTenant),
 			builder.WithPredicates(managedByOperator),
-		 ).
+		).
 		Watches(
 			&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.mapToTenant),
 			builder.WithPredicates(managedByOperator),
