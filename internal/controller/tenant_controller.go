@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -25,6 +26,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	tenantv1 "github.com/rmeji3/k8s-tenant-operator/api/v1"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
@@ -86,6 +89,19 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	log.Info("Reconciling tenant", "tenant", tenant.Name)
+
+	// If a namespace with this name is still terminating from a previous delete,
+	// wait for it to fully disappear before recreating anything. Creating child
+	// resources in a Terminating namespace fails or gets garbage-collected.
+	ns := &corev1.Namespace{}
+	if err := r.Get(ctx, client.ObjectKey{Name: tenant.Spec.Subdomain}, ns); err == nil {
+		if !ns.DeletionTimestamp.IsZero() {
+			log.Info("Namespace is still terminating, requeueing", "namespace", tenant.Spec.Subdomain)
+			return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
+		}
+	} else if !apierrors.IsNotFound(err) {
+		return ctrl.Result{}, err
+	}
 
 	// create namespace for tenant
 	if err := r.ReconcileNamespace(ctx, tenant); err != nil {
