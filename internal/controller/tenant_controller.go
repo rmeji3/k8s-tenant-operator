@@ -26,10 +26,13 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	tenantv1 "github.com/rmeji3/k8s-tenant-operator/api/v1"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 )
 
 // TenantReconciler reconciles a Tenant object
@@ -145,6 +148,16 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 func (r *TenantReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&tenantv1.Tenant{}).
+		// Watch the resources we provision so manual drift (e.g. someone
+		// deletes a Deployment) triggers a reconcile of the owning Tenant.
+		// We use Watches + a label-based mapping instead of Owns() because
+		// our children live in a different namespace than the Tenant, so
+		// owner references aren't allowed.
+		Watches(&corev1.Namespace{}, handler.EnqueueRequestsFromMapFunc(r.mapToTenant)).
+		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.mapToTenant)).
+		Watches(&appsv1.Deployment{}, handler.EnqueueRequestsFromMapFunc(r.mapToTenant)).
+		Watches(&corev1.Service{}, handler.EnqueueRequestsFromMapFunc(r.mapToTenant)).
+		Watches(&networkingv1.Ingress{}, handler.EnqueueRequestsFromMapFunc(r.mapToTenant)).
 		Named("tenant").
 		Complete(r)
 }

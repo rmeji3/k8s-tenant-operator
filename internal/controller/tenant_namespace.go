@@ -20,7 +20,8 @@ func (r *TenantReconciler) ReconcileNamespace(ctx context.Context, tenant *tenan
 		// build and create the namespace
 		ns := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: tenant.Spec.Subdomain,
+				Name:   tenant.Spec.Subdomain,
+				Labels: tenantLabels(tenant),
 			},
 		}
 		if err := r.Create(ctx, ns); err != nil {

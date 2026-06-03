@@ -21,6 +21,7 @@ func (r *TenantReconciler) ReconcileSecret(ctx context.Context, tenant *tenantv1
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, secret, func() error {
 		// everything inside here is the DESIRED state.
 		// runs before both create and update.
+		secret.Labels = tenantLabels(tenant)
 		secret.Data = map[string][]byte{
 			"username": []byte("admin"),
 			"password": []byte("password"),

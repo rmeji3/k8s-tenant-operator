@@ -22,6 +22,7 @@ func (r *TenantReconciler) ReconcileService(ctx context.Context, tenant *tenantv
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, service, func() error {
 		// everything inside here is the DESIRED state.
 		// runs before both create and update.
+		service.Labels = tenantLabels(tenant)
 		service.Spec.Selector = map[string]string{
 			"app": tenant.Spec.Subdomain,
 		}

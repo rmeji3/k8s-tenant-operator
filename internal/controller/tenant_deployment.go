@@ -22,6 +22,7 @@ func (r *TenantReconciler) ReconcileDeployment(ctx context.Context, tenant *tena
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, deployment, func() error {
 		// everything inside here is the DESIRED state.
 		// runs before both create and update.
+		deployment.Labels = tenantLabels(tenant)
 		deployment.Spec.Replicas = tenant.Spec.Replicas
 		deployment.Spec.Selector = &metav1.LabelSelector{
 			MatchLabels: map[string]string{"app": tenant.Spec.Subdomain},
