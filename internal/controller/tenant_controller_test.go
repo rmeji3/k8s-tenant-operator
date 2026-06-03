@@ -21,64 +21,102 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"k8s.io/apimachinery/pkg/api/errors"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	tenantv1 "github.com/rmeji3/k8s-tenant-operator/api/v1"
 )
 
 var _ = Describe("Tenant Controller", func() {
-	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
+	Context("When reconciling a Tenant", func() {
+		const (
+			resourceName = "test-resource"
+			subdomain    = "acme"
+			appImage     = "nginx:latest"
+		)
+		var replicas int32 = 3
 
 		ctx := context.Background()
 
-		typeNamespacedName := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
-		}
-		tenant := &tenantv1.Tenant{}
+		tenantKey := types.NamespacedName{Name: resourceName, Namespace: "default"}
 
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind Tenant")
-			err := k8sClient.Get(ctx, typeNamespacedName, tenant)
-			if err != nil && errors.IsNotFound(err) {
+			By("creating a Tenant with a valid spec")
+			tenant := &tenantv1.Tenant{}
+			err := k8sClient.Get(ctx, tenantKey, tenant)
+			if err != nil {
 				resource := &tenantv1.Tenant{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: tenantv1.TenantSpec{
+						Subdomain: subdomain,
+						AppImage:  appImage,
+						Replicas:  &replicas,
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &tenantv1.Tenant{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Cleanup the specific resource instance Tenant")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			By("cleaning up the Tenant")
+			tenant := &tenantv1.Tenant{}
+			if err := k8sClient.Get(ctx, tenantKey, tenant); err == nil {
+				// envtest has no garbage-collection controller, so strip the
+				// finalizer before deleting to avoid a stuck object.
+				tenant.SetFinalizers(nil)
+				Expect(k8sClient.Update(ctx, tenant)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, tenant)).To(Succeed())
+			}
 		})
-		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			controllerReconciler := &TenantReconciler{
+
+		It("provisions all child resources and marks the Tenant Ready", func() {
+			reconciler := &TenantReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
+			By("reconciling the Tenant")
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: tenantKey})
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+
+			By("creating the tenant namespace")
+			ns := &corev1.Namespace{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: subdomain}, ns)).To(Succeed())
+
+			By("creating the Secret")
+			secret := &corev1.Secret{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: subdomain + "-secret", Namespace: subdomain}, secret)).To(Succeed())
+
+			By("creating the Deployment with the right image and replica count")
+			deployment := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: subdomain + "-deployment", Namespace: subdomain}, deployment)).To(Succeed())
+			Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
+			Expect(deployment.Spec.Template.Spec.Containers[0].Image).To(Equal(appImage))
+			Expect(deployment.Spec.Replicas).NotTo(BeNil())
+			Expect(*deployment.Spec.Replicas).To(Equal(replicas))
+
+			By("creating the Service")
+			service := &corev1.Service{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: subdomain + "-service", Namespace: subdomain}, service)).To(Succeed())
+
+			By("creating the Ingress")
+			ingress := &networkingv1.Ingress{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: subdomain + "-ingress", Namespace: subdomain}, ingress)).To(Succeed())
+
+			By("setting a Ready condition on the Tenant status")
+			tenant := &tenantv1.Tenant{}
+			Expect(k8sClient.Get(ctx, tenantKey, tenant)).To(Succeed())
+			cond := apimeta.FindStatusCondition(tenant.Status.Conditions, "Ready")
+			Expect(cond).NotTo(BeNil())
+			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
 		})
 	})
 })

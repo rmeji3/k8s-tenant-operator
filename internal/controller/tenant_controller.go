@@ -31,8 +31,10 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	builder "sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	predicate "sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 // TenantReconciler reconciles a Tenant object
@@ -146,6 +148,13 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *TenantReconciler) SetupWithManager(mgr ctrl.Manager) error {
+
+	managedByOperator := predicate.NewPredicateFuncs(func(object client.Object) bool {
+		labels := object.GetLabels()
+		_, hasLabel := labels[labelManagedBy] // only trigger reconciles for resources with our "managed-by" label, to avoid conflicts with other controllers
+		return hasLabel
+	})
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&tenantv1.Tenant{}).
 		// Watch the resources we provision so manual drift (e.g. someone
@@ -153,11 +162,27 @@ func (r *TenantReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// We use Watches + a label-based mapping instead of Owns() because
 		// our children live in a different namespace than the Tenant, so
 		// owner references aren't allowed.
-		Watches(&corev1.Namespace{}, handler.EnqueueRequestsFromMapFunc(r.mapToTenant)).
-		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.mapToTenant)).
-		Watches(&appsv1.Deployment{}, handler.EnqueueRequestsFromMapFunc(r.mapToTenant)).
-		Watches(&corev1.Service{}, handler.EnqueueRequestsFromMapFunc(r.mapToTenant)).
-		Watches(&networkingv1.Ingress{}, handler.EnqueueRequestsFromMapFunc(r.mapToTenant)).
+		Watches(
+			&corev1.Namespace{},
+			handler.EnqueueRequestsFromMapFunc(r.mapToTenant),
+			builder.WithPredicates(managedByOperator),
+		).
+		Watches(
+			&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.mapToTenant),
+			builder.WithPredicates(managedByOperator),
+		).
+		Watches(
+			&appsv1.Deployment{}, handler.EnqueueRequestsFromMapFunc(r.mapToTenant),
+			builder.WithPredicates(managedByOperator),
+		).
+		Watches(
+			&corev1.Service{}, handler.EnqueueRequestsFromMapFunc(r.mapToTenant),
+			builder.WithPredicates(managedByOperator),
+		).
+		Watches(
+			&networkingv1.Ingress{}, handler.EnqueueRequestsFromMapFunc(r.mapToTenant),
+			builder.WithPredicates(managedByOperator),
+		).
 		Named("tenant").
 		Complete(r)
 }
